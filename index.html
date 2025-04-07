@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>LC MC</title>
+    <link rel="icon" type="image/x-icon" href="/Icons/compass.png">
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden; /* Prevent scrolling of the webpage */
+        }
+        #image-container {
+            width: 100vw; /* Full viewport width */
+            height: 100vh; /* Full viewport height */
+            background: #000; /* Optional dark background */
+            position: relative; /* Necessary for positioning */
+            overflow: hidden; /* Hide parts of the image that move out of view */
+            cursor: grab; /* Indicate draggable area */
+        }
+        #image-container:active {
+            cursor: grabbing; /* Change cursor while dragging */
+        }
+        #large-image {
+            transform-origin: top left; /* Pan and zoom relative to the top-left corner */
+            position: absolute; /* Allow panning via top/left */
+            max-width: none; /* Allow full scaling */
+            max-height: none; /* Prevent automatic scaling down */
+            user-select: none; /* Disable text/image selection while panning */
+            pointer-events: none; /* Prevent accidental interference during dragging */
+        }
+        #overlay {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 5px 10px;
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+            border-radius: 5px;
+        }
+        .pin-wrapper {
+            position: absolute;
+            transform: translate(-50%, -50%); /* Center the pin on its position */
+            pointer-events: none; /* Pins should not interfere with dragging or zooming */
+            text-align: center;
+            white-space: nowrap;
+        }
+        .pin {
+            width: 20px; /* Fixed size */
+            height: 20px; /* Fixed size */
+        }
+        .pin-label {
+            color: white;
+            background-color:black;
+            font-family: Arial, sans-serif;
+            font-size: 12px;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div id="image-container">
+        <img id="large-image" src="https://live.staticflickr.com/65535/54435692394_1f8e52a19d_o.png" alt="Large Image" draggable="false">
+        <div id="overlay">Coordinates: 0, 0</div>
+    </div>
+
+    <script>
+        const container = document.getElementById("image-container");
+        const image = document.getElementById("large-image");
+        const overlay = document.getElementById("overlay");
+
+        let zoom = 1; // Current zoom level
+        let initialZoom = 1; // Initial zoom level for proper reset
+        const zoomStep = 0.1; // Increment for zooming
+        const maxZoom = 10; // Maximum zoom level
+        const minZoom = 0.1; // Minimum zoom level
+        let offsetX = 0, offsetY = 0; // Current offsets for panning
+        let isDragging = false; // Dragging state
+        let startX, startY; // Start coordinates for dragging
+
+        // Center pixel of the image
+        const centerPixelX = 5168;
+        const centerPixelY = 5264;
+
+        const adjustInitialZoom = () => {
+            const containerRect = container.getBoundingClientRect();
+            const widthZoom = containerRect.width / image.naturalWidth;
+            const heightZoom = containerRect.height / image.naturalHeight;
+            initialZoom = Math.min(widthZoom, heightZoom);
+            zoom = initialZoom;
+
+            offsetX = 0;
+            offsetY = 0;
+            updateTransform();
+        };
+
+        const updateTransform = () => {
+            image.style.transform = `translate(${offsetX}px, ${offsetY}px) scale(${zoom})`;
+            updateWaypoints(); // Update waypoints when zoom/pan changes
+        };
+
+        const updateOverlay = (mouseX, mouseY) => {
+            const rect = container.getBoundingClientRect();
+            const imageX = (mouseX - rect.left - offsetX) / zoom;
+            const imageY = (mouseY - rect.top - offsetY) / zoom;
+
+            const pixelX = Math.round(imageX);
+            const pixelY = Math.round(imageY);
+
+            const relativeX = pixelX - centerPixelX;
+            const relativeY = pixelY - centerPixelY;
+
+            overlay.textContent = `Coordinates: ${relativeX}, ${relativeY}`;
+        };
+
+        const createWaypoint = (relativeX, relativeY, imageUrl, name) => {
+            const wrapper = document.createElement("div");
+            wrapper.className = "pin-wrapper";
+            wrapper.dataset.relativeX = relativeX;
+            wrapper.dataset.relativeY = relativeY;
+
+            const pin = document.createElement("img");
+            pin.src = imageUrl;
+            pin.className = "pin";
+
+            const label = document.createElement("div");
+            label.className = "pin-label";
+            label.textContent = name;
+
+            wrapper.appendChild(pin);
+            wrapper.appendChild(label);
+            container.appendChild(wrapper);
+            updateWaypoints(); // Position the pin immediately
+        };
+
+        const updateWaypoints = () => {
+            const wrappers = document.querySelectorAll(".pin-wrapper");
+            const rect = container.getBoundingClientRect();
+
+            wrappers.forEach(wrapper => {
+                const relativeX = parseFloat(wrapper.dataset.relativeX);
+                const relativeY = parseFloat(wrapper.dataset.relativeY);
+
+                // Convert relative position back to pixel coordinates
+                const imageX = centerPixelX + relativeX;
+                const imageY = centerPixelY + relativeY;
+
+                // Convert image pixel coordinates to screen coordinates
+                const screenX = (imageX * zoom) + offsetX + rect.left;
+                const screenY = (imageY * zoom) + offsetY + rect.top;
+
+                // Position the wrapper
+                wrapper.style.left = `${screenX}px`;
+                wrapper.style.top = `${screenY}px`;
+            });
+        };
+
+        container.addEventListener("wheel", (event) => {
+            event.preventDefault();
+
+            const rect = container.getBoundingClientRect();
+            const mouseX = (event.clientX - rect.left - offsetX) / zoom;
+            const mouseY = (event.clientY - rect.top - offsetY) / zoom;
+
+            const oldZoom = zoom;
+            if (event.deltaY < 0) {
+                zoom = Math.min(maxZoom, zoom + zoomStep);
+            } else {
+                zoom = Math.max(minZoom, zoom - zoomStep);
+            }
+
+            const zoomDelta = zoom - oldZoom;
+
+            offsetX -= mouseX * zoomDelta;
+            offsetY -= mouseY * zoomDelta;
+
+            const scaledWidth = image.naturalWidth * zoom;
+            const scaledHeight = image.naturalHeight * zoom;
+
+            offsetX = Math.min(Math.max(offsetX, container.offsetWidth - scaledWidth), 0);
+            offsetY = Math.min(Math.max(offsetY, container.offsetHeight - scaledHeight), 0);
+
+            updateTransform();
+        });
+
+        container.addEventListener("mousedown", (event) => {
+            isDragging = true;
+            startX = event.clientX - offsetX;
+            startY = event.clientY - offsetY;
+        });
+
+        container.addEventListener("mousemove", (event) => {
+            if (isDragging) {
+                offsetX = event.clientX - startX;
+                offsetY = event.clientY - startY;
+
+                const scaledWidth = image.naturalWidth * zoom;
+                const scaledHeight = image.naturalHeight * zoom;
+
+                offsetX = Math.min(Math.max(offsetX, container.offsetWidth - scaledWidth), 0);
+                offsetY = Math.min(Math.max(offsetY, container.offsetHeight - scaledHeight), 0);
+
+                updateTransform();
+            }
+
+            updateOverlay(event.clientX, event.clientY);
+        });
+
+        container.addEventListener("mouseup", () => {
+            isDragging = false;
+        });
+
+        container.addEventListener("mouseleave", () => {
+            isDragging = false;
+        });
+
+        window.addEventListener("load", adjustInitialZoom);
+        window.addEventListener("resize", adjustInitialZoom);
+
+        // Waypoints
+        window.addEventListener("load", () => {
+            createWaypoint(122, 59, "./Icons/diamond.png", "Mine_R2's Shop");
+
+
+        });
+    </script>
+</body>
+</html>
